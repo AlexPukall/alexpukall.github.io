@@ -1,0 +1,210 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
+
+uint32_t a,b[128];
+uint16_t index2,r,cle;
+
+/* CARACACHS Cipher (c) Alexander PUKALL 2000 */
+/* 256 bits CIPHER */
+/* Code free for all, even for commercial application */
+/* Public domain */
+/* Compilation : gcc caracachs.c -o caracachs */
+
+int stream(uint16_t *r,uint16_t *index2,uint32_t *a,uint32_t *b)
+{
+  b[*index2] = ( b[*index2] * (*a) ) + 1;
+  *r = (*r + (( b[*index2] >> 16 ) & 0x7fff));
+  *r = (*r << (*r%16)) | (*r >> (16-(*r%16)));
+  return(0);
+}
+
+uint8_t pc3encode(uint8_t byte)
+{
+  uint8_t d;
+
+     for (index2=0;index2<=(cle-1);index2++)
+     {
+       stream(&r,&index2,&a,b);
+     }
+   d=byte;
+   byte=byte^(r&255);
+   r=r+d;
+   b[cle-1]=b[cle-1]+d;
+   return(byte);
+}
+
+uint8_t pc3decode(uint8_t byte)
+{
+  uint8_t d;
+
+     for (index2=0;index2<=(cle-1);index2++)
+     {
+       stream(&r,&index2,&a,b);
+     }
+   byte=byte^(r&255);
+   d=byte;
+   r=r+d;
+   b[cle-1]=b[cle-1]+d;
+   return(byte);
+}
+
+
+int pc3init(uint16_t lngkey,uint8_t key[258])
+{
+   uint16_t z,y,x,i,reste;
+   uint8_t tab[258],plain;
+   if (lngkey>256) lngkey=256;
+   if (lngkey<1)
+   {
+     lngkey=1;
+     strcpy(key,"a");
+   }
+
+   x=lngkey;
+
+   for (i=0;i<x;i++)
+   {
+     tab[i]=key[i];
+   }
+
+   reste=lngkey%2;
+   cle=lngkey/2;
+   if (reste!=0) cle=cle+1;
+
+   for (z=0;z<128;z++)
+   {
+    b[z]=0;
+   }
+
+   y=0;
+   for (z=0;z<=(cle-1);z++)
+   {
+    if ( (z==(cle-1))&&(reste!=0) )
+     {
+       b[z]=(key[y]*256)%65536;
+     }
+    else
+     {
+       b[z]=((key[y]*256)%65536)+key[y+1];
+       y=y+1;
+     }
+    y=y+1;
+   }
+
+   r=0;
+   a=0x015a4e35;
+
+     for (index2=0;index2<=(cle-1);index2++)
+     {
+       for(z=0;z<=index2;z++)
+       {
+       stream(&r,&index2,&a,b);
+       }
+     }
+
+   for (i=0;i<x;i++)
+   {
+       plain=pc3encode(tab[i]);
+       tab[i]=tab[i]^plain;
+   }
+  i=i-1;
+   for (z=1;z<=((x+1)*10);z++)
+   {
+       plain=pc3encode(tab[i]);
+       tab[i]=tab[i]^plain;
+       i=i+1;
+       if (i>=x) i=0;
+   }
+
+   reste=lngkey%2;
+   cle=lngkey/2;
+   if (reste!=0) cle=cle+1;
+
+   for (z=0;z<128;z++)
+   {
+    b[z]=0;
+   }
+
+   y=0;
+   for (z=0;z<=(cle-1);z++)
+   {
+    if ( (z==(cle-1))&&(reste!=0) )
+     {
+       b[z]=(tab[y]*256)%65536;
+     }
+    else
+     {
+       b[z]=((tab[y]*256)%65536)+tab[y+1];
+       y=y+1;
+     }
+    y=y+1;
+   }
+
+   for (z=0;z<x;z++)
+   {
+     key[z]=0;
+     tab[z]=0;
+   }
+
+   r=0;
+   a=0x015a4e35;
+
+     for (index2=0;index2<=(cle-1);index2++)
+     {
+       for(z=0;z<=index2;z++)
+       {
+       stream(&r,&index2,&a,b);
+       }
+     }
+   return(0);
+}
+
+int main()
+{
+  uint16_t longueur,y;
+  uint8_t code[33];
+  FILE *in,*out;
+  int16_t c; // signed int 16
+
+  strcpy(code,"abcdefghijklmnopqrstuvwxyz012345"); /* the PASSWORD */
+  longueur=32;
+
+  /* init the key */
+
+  pc3init(longueur,code);
+
+  if ((in=fopen("input.bin","rb")) == NULL) {printf("\nError reading file INPUT.BIN !\n");exit(0);}
+  if ((out=fopen("output.bin","wb")) == NULL) {printf("\nError writing file OUTPUT.BIN !\n");exit(0);}
+
+  /* encrypt the file INPUT.BIN and write it to OUTPUT.BIN */
+  while ( (c=fgetc(in)) !=EOF )
+  {
+   fputc(pc3encode(c),out);
+  }
+
+  fclose(in);
+  fclose(out);
+
+  if ((in=fopen("output.bin","rb")) == NULL) {printf("\nError reading file OUTPUT.BIN !\n");exit(0);}
+  if ((out=fopen("plain.bin","wb")) == NULL) {printf("\nError writing file PLAIN.BIN !\n");exit(0);}
+
+  /* init the key with the same parameters as the encryption key*/
+
+  strcpy(code,"abcdefghijklmnopqrstuvwxyz012345"); /* the PASSWORD */
+  longueur=32;
+
+  pc3init(longueur,code);
+
+  /* decrypt the file OUTPUT.BIN and write it to PLAIN.BIN */
+
+  while ( (c=fgetc(in)) !=EOF )
+  {
+   fputc(pc3decode(c),out);
+  }
+
+  fclose(in);
+  fclose(out);
+  return(0);
+}
